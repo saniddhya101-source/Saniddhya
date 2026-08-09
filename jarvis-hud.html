@@ -1,0 +1,1736 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>J.A.R.V.I.S // CORE INTERFACE</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;600;800&family=Share+Tech+Mono&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --black:#020505;
+    --panel:#0a0e0e;
+    --panel-line: rgba(43,246,232,0.35);
+    --neon:#2bf6e8;
+    --neon-soft: rgba(43,246,232,0.55);
+    --neon-dim: rgba(43,246,232,0.18);
+    --text-dim: rgba(180,255,250,0.55);
+    --grid-line: rgba(43,246,232,0.06);
+  }
+  *{box-sizing:border-box; margin:0; padding:0;}
+  html,body{
+    width:100%; height:100vh; height:100dvh; background:var(--black); overflow:hidden;
+    font-family:'Share Tech Mono', monospace; color:var(--neon);
+  }
+  .heading, .mono-head{font-family:'Orbitron', sans-serif;}
+
+  /* ---------- boot / startup sequence ---------- */
+  #boot-screen{
+    position:fixed; inset:0; z-index:9999; background:#000;
+    display:flex; align-items:center; justify-content:center;
+    transition:opacity 0.8s ease;
+  }
+  #boot-screen.hide{ opacity:0; pointer-events:none; }
+  #boot-video{
+    width:100%; height:100%; object-fit:contain; background:#000; display:block;
+  }
+  /* On laptop/desktop-sized landscape screens the boot clip is wide enough to
+     fill the frame edge-to-edge without meaningfully cropping the subject —
+     so go full-bleed there. Narrower / taller (mobile) screens keep "contain"
+     above so nothing gets zoomed in or sliced off. */
+  @media (min-width:901px) and (orientation:landscape){
+    #boot-video{ object-fit:cover; }
+  }
+  #boot-skip{
+    position:absolute; top:max(20px, env(safe-area-inset-top)); right:20px;
+    background:rgba(0,0,0,0.4); border:1px solid var(--neon-soft); color:var(--neon);
+    font-family:'Orbitron',sans-serif; font-size:11px; letter-spacing:1.5px;
+    padding:8px 14px; cursor:pointer; border-radius:2px; z-index:2;
+    text-shadow:0 0 6px var(--neon-soft);
+  }
+  #boot-skip:hover{ background:rgba(43,246,232,0.15); }
+  #boot-tap-hint{
+    position:absolute; bottom:max(30px, env(safe-area-inset-bottom)); left:50%; transform:translate(-50%,0);
+    font-family:'Orbitron',sans-serif; font-size:11px; letter-spacing:2px; color:var(--neon);
+    text-shadow:0 0 8px var(--neon-soft); opacity:0; pointer-events:none;
+    animation: bootHintPulse 1.6s ease-in-out infinite;
+  }
+  #boot-tap-hint.show{ opacity:1; pointer-events:auto; cursor:pointer; }
+  @keyframes bootHintPulse{ 0%,100%{opacity:0.4;} 50%{opacity:1;} }
+
+  /* ---------- background grid + scanlines ---------- */
+  #app{
+    position:relative; width:100vw; height:100vh; height:100dvh; overflow:hidden;
+    background:
+      radial-gradient(ellipse at 50% 40%, rgba(43,246,232,0.07), transparent 60%),
+      var(--black);
+  }
+  .grid-overlay{
+    position:absolute; inset:0; pointer-events:none; z-index:2;
+    background-image:
+      linear-gradient(var(--grid-line) 1px, transparent 1px),
+      linear-gradient(90deg, var(--grid-line) 1px, transparent 1px);
+    background-size: 42px 42px;
+    animation: gridDrift 24s linear infinite;
+    opacity:0.8;
+  }
+  @keyframes gridDrift{
+    0%{background-position:0 0;}
+    100%{background-position:42px 42px;}
+  }
+  .scanline{
+    position:absolute; left:0; right:0; height:2px; z-index:2;
+    background:linear-gradient(90deg, transparent, var(--neon-soft), transparent);
+    opacity:0.25; pointer-events:none;
+    animation: scan 6s linear infinite;
+  }
+  @keyframes scan{
+    0%{top:-2%;} 100%{top:102%;}
+  }
+  .vignette{
+    position:absolute; inset:0; pointer-events:none; z-index:7;
+    box-shadow: inset 0 0 180px 40px rgba(0,0,0,0.9);
+  }
+  .noise-flicker{
+    position:absolute; inset:0; pointer-events:none; mix-blend-mode:overlay; z-index:2;
+    background:repeating-linear-gradient(0deg, rgba(255,255,255,0.015) 0px, transparent 1px, transparent 2px);
+    animation: flicker 4s infinite steps(20);
+  }
+  @keyframes flicker{
+    0%,100%{opacity:0.4;} 50%{opacity:0.7;}
+  }
+
+  /* ---------- background earth globe ---------- */
+  .earth-wrap{
+    position:absolute; top:50%; left:50%; transform:translate(-50%,-50%);
+    width:min(112vh, 980px); height:min(112vh, 980px);
+    z-index:0; pointer-events:none; opacity:0.7;
+    filter:drop-shadow(0 0 32px rgba(43,246,232,0.2));
+  }
+  #earth-canvas{ width:100%; height:100%; display:block; }
+
+  /* ---------- HUD corners ---------- */
+  .hud-corner{
+    position:absolute; z-index:5; font-size:11px; letter-spacing:1px;
+    color:var(--neon); text-shadow:0 0 6px var(--neon-soft);
+    line-height:1.6;
+  }
+  .hud-corner .label{color:var(--text-dim); font-size:10px;}
+  .hud-corner b{color:var(--neon);}
+  .corner-tl{top:22px; left:26px;}
+  .corner-tr{top:22px; right:26px; text-align:right;}
+  .corner-bl{bottom:22px; left:26px;}
+  .corner-br{bottom:22px; right:26px; text-align:right;}
+
+  .bracket{
+    position:absolute; width:34px; height:34px; border:1px solid var(--neon-soft); z-index:6;
+    opacity:0.9;
+  }
+  .bracket-tl{top:8px; left:8px; border-right:none; border-bottom:none;}
+  .bracket-tr{top:8px; right:8px; border-left:none; border-bottom:none;}
+  .bracket-bl{bottom:8px; left:8px; border-right:none; border-top:none;}
+  .bracket-br{bottom:8px; right:8px; border-left:none; border-top:none;}
+
+  .status-dot{
+    display:inline-block; width:7px; height:7px; border-radius:50%;
+    background:var(--neon); box-shadow:0 0 8px var(--neon), 0 0 16px var(--neon-soft);
+    animation: dotPulse 2s ease-in-out infinite;
+    margin-right:6px;
+  }
+  @keyframes dotPulse{ 0%,100%{opacity:1;} 50%{opacity:0.35;} }
+
+  .freq-graph{ display:flex; align-items:flex-end; gap:3px; height:26px; margin-top:6px; justify-content:flex-end;}
+  .freq-graph span{
+    display:inline-block; width:3px; background:var(--neon);
+    box-shadow:0 0 6px var(--neon-soft);
+    animation: freqMove 1.2s ease-in-out infinite;
+    opacity:0.85;
+  }
+  @keyframes freqMove{
+    0%,100%{height:4px;} 50%{height:22px;}
+  }
+
+  .crosshair{
+    position:absolute; top:50%; left:50%; width:1px; height:1px; pointer-events:none; z-index:2;
+  }
+  .crosshair .line{ position:absolute; background:var(--neon-dim);}
+  .crosshair .h{ width:100vw; height:1px; top:0; left:-50vw;}
+  .crosshair .v{ height:100vh; width:1px; left:0; top:-50vh;}
+  .crosshair .ring{
+    position:absolute; border:1px solid var(--neon-dim); border-radius:50%;
+    top:50%; left:50%; transform:translate(-50%,-50%);
+  }
+
+  /* ---------- CENTRAL CORE ---------- */
+  .core-wrap{
+    position:absolute; top:50%; left:50%; transform:translate(-50%,-50%);
+    width:min(46vh,420px); height:min(46vh,420px);
+    display:flex; align-items:center; justify-content:center;
+    z-index:4;
+  }
+  .core-svg{ width:100%; height:100%; overflow:visible; }
+  .ring{ fill:none; stroke:var(--neon); transform-origin:center; }
+  .ring1{ stroke-width:1; opacity:0.55; animation: spinSlow 40s linear infinite; }
+  .ring2{ stroke-width:1; opacity:0.35; stroke-dasharray:4 10; animation: spinSlow 60s linear infinite reverse; }
+  .ring3{ stroke-width:1.4; opacity:0.8; stroke-dasharray:2 6; animation: spinSlow 22s linear infinite; }
+  .core-center{ fill:url(#coreGlow); filter:drop-shadow(0 0 14px var(--neon-soft)); }
+  @keyframes spinSlow{ to{ transform:rotate(360deg);} }
+
+  #app.idle .core-wrap{ animation:idlePulse 3.4s ease-in-out infinite; }
+  @keyframes idlePulse{
+    0%,100%{ filter:drop-shadow(0 0 10px var(--neon-dim)); transform:translate(-50%,-50%) scale(1);}
+    50%{ filter:drop-shadow(0 0 26px var(--neon-soft)); transform:translate(-50%,-50%) scale(1.03);}
+  }
+  #app.listening .core-wrap{ animation:listenPulse 0.9s ease-in-out infinite; }
+  @keyframes listenPulse{
+    0%,100%{ filter:drop-shadow(0 0 22px var(--neon)); transform:translate(-50%,-50%) scale(1.05);}
+    50%{ filter:drop-shadow(0 0 44px var(--neon)); transform:translate(-50%,-50%) scale(1.12);}
+  }
+  #app.speaking .core-wrap{ animation:speakPulse 0.55s ease-in-out infinite; }
+  @keyframes speakPulse{
+    0%,100%{ filter:drop-shadow(0 0 18px var(--neon)); transform:translate(-50%,-50%) scale(1.02);}
+    50%{ filter:drop-shadow(0 0 40px var(--neon-soft)); transform:translate(-50%,-50%) scale(1.09);}
+  }
+
+  .ripple{
+    position:absolute; border:1px solid var(--neon-soft); border-radius:50%;
+    top:50%; left:50%; transform:translate(-50%,-50%);
+    width:60%; height:60%; opacity:0;
+  }
+  #app.speaking .ripple, #app.listening .ripple{
+    animation: rippleOut 1.6s ease-out infinite;
+  }
+  .ripple:nth-child(2){ animation-delay:0.5s; }
+  .ripple:nth-child(3){ animation-delay:1s; }
+  @keyframes rippleOut{
+    0%{ width:40%; height:40%; opacity:0.8; }
+    100%{ width:130%; height:130%; opacity:0; }
+  }
+
+  /* mic button */
+  .mic-btn{
+    position:relative; z-index:6; width:92px; height:92px; border-radius:50%;
+    background:radial-gradient(circle at 50% 40%, rgba(43,246,232,0.25), rgba(0,12,11,0.9));
+    border:1px solid var(--neon); color:var(--neon);
+    display:flex; align-items:center; justify-content:center;
+    cursor:pointer; font-family:'Orbitron',sans-serif; font-size:10px; letter-spacing:1.5px;
+    box-shadow:0 0 20px var(--neon-dim), inset 0 0 20px rgba(43,246,232,0.15);
+    transition:box-shadow 0.3s, transform 0.2s, opacity 0.3s;
+    flex-direction:column; gap:6px;
+  }
+  .mic-btn:hover{ box-shadow:0 0 30px var(--neon-soft), inset 0 0 25px rgba(43,246,232,0.25); transform:translate(-50%,-50%) scale(1.04) translate(50%,50%);}
+  .mic-btn svg{ width:26px; height:26px; }
+  #app.listening .mic-btn{ box-shadow:0 0 40px var(--neon), inset 0 0 30px rgba(43,246,232,0.4); }
+  .mic-btn.disabled{ opacity:0.35; cursor:not-allowed; pointer-events:none; }
+
+  .core-status{
+    position:absolute; top:calc(50% + min(30vh,232px)); left:50%; transform:translate(-50%,0);
+    font-family:'Orbitron',sans-serif; font-size:12px; letter-spacing:3px; text-align:center;
+    color:var(--neon); text-shadow:0 0 8px var(--neon-soft); white-space:nowrap;
+  }
+  .core-status .sub{ display:block; font-family:'Share Tech Mono',monospace; font-size:11px; letter-spacing:1px; color:var(--text-dim); margin-top:4px;}
+
+  .transcript-bar{
+    position:absolute; bottom:130px; left:50%; transform:translate(-50%,0);
+    width:min(640px, 86vw); min-height:22px; text-align:center;
+    font-size:13px; color:#b9fff5; text-shadow:0 0 6px var(--neon-soft);
+    z-index:6; pointer-events:none;
+  }
+
+  /* ---------- mobile drawer controls (hidden on laptop/desktop) ---------- */
+  .mobile-tabs{
+    display:none; position:fixed; top:max(14px, env(safe-area-inset-top)); left:50%;
+    transform:translate(-50%,0); gap:8px; z-index:15;
+  }
+  .mobile-tab{
+    background:rgba(5,8,8,0.8); border:1px solid var(--neon-soft); color:var(--neon);
+    font-family:'Orbitron',sans-serif; font-size:10px; letter-spacing:1.5px;
+    padding:7px 14px; border-radius:20px; cursor:pointer; text-shadow:0 0 6px var(--neon-soft);
+  }
+  .mobile-tab.active{ background:var(--neon); color:#050505; text-shadow:none; }
+  .panel-close{
+    display:none; align-self:flex-end; background:transparent; border:1px solid var(--panel-line);
+    color:var(--neon); font-family:'Orbitron',sans-serif; font-size:10px; letter-spacing:1px;
+    padding:6px 12px; border-radius:2px; cursor:pointer; margin-bottom:8px; flex-shrink:0;
+  }
+
+  /* ---------- side panels ---------- */
+  .panel{
+    position:absolute; width:300px; max-height:74vh;
+    background:linear-gradient(180deg, rgba(17,17,21,0.88), rgba(5,5,5,0.9));
+    border:1px solid var(--panel-line); border-radius:2px;
+    padding:14px 16px; z-index:5; backdrop-filter:blur(2px);
+    box-shadow:0 0 24px rgba(0,0,0,0.6), inset 0 0 30px rgba(43,246,232,0.03);
+    display:flex; flex-direction:column; gap:14px;
+    overflow-y:auto;
+  }
+  .panel::-webkit-scrollbar{ width:4px; }
+  .panel::-webkit-scrollbar-thumb{ background:var(--neon-dim); }
+  .panel-left{ top:96px; left:26px; }
+  .panel-right{ top:96px; right:26px; }
+  .panel h3{
+    font-family:'Orbitron',sans-serif; font-size:11px; letter-spacing:2px; margin-bottom:10px;
+    color:var(--neon); text-shadow:0 0 6px var(--neon-soft);
+    border-bottom:1px solid var(--panel-line); padding-bottom:8px;
+  }
+  .panel-section{ display:flex; flex-direction:column; }
+  .log-feed{ overflow-y:auto; max-height:60vh; font-size:12px; line-height:1.55; padding-right:4px;}
+  .log-feed::-webkit-scrollbar{ width:4px; }
+  .log-feed::-webkit-scrollbar-thumb{ background:var(--neon-dim); }
+  .log-line{ margin-bottom:10px; opacity:0; animation:fadeIn 0.4s forwards; }
+  @keyframes fadeIn{ to{opacity:1;} }
+  .log-line.user{ color:#b9fff5; }
+  .log-line.user::before{ content:'YOU  › '; color:var(--text-dim); }
+  .log-line.jarvis{ color:var(--neon); }
+  .log-line.jarvis::before{ content:'JARVIS › '; color:var(--text-dim); }
+  .log-line.sys{ color:var(--text-dim); font-style:italic; }
+
+  .relevant-links{ display:flex; flex-direction:column; gap:8px; max-height:34vh; overflow-y:auto; padding-right:2px; }
+  .relevant-links::-webkit-scrollbar{ width:4px; }
+  .relevant-links::-webkit-scrollbar-thumb{ background:var(--neon-dim); }
+  .rl-empty{ font-size:11px; color:var(--text-dim); font-style:italic; line-height:1.5; }
+  .rl-loading{ font-size:11px; color:var(--text-dim); font-style:italic; }
+  .rl-item{
+    display:block; border:1px solid var(--panel-line); border-radius:2px; padding:8px 9px;
+    text-decoration:none; background:rgba(43,246,232,0.03); transition:all 0.2s;
+  }
+  .rl-item:hover{ background:rgba(43,246,232,0.12); box-shadow:0 0 10px var(--neon-dim); }
+  .rl-title{
+    font-family:'Orbitron',sans-serif; font-size:10.5px; letter-spacing:0.5px; color:var(--neon);
+    text-shadow:0 0 4px var(--neon-soft); margin-bottom:3px;
+  }
+  .rl-url{ font-size:9.5px; color:var(--text-dim); word-break:break-all; margin-bottom:3px; }
+  .rl-snip{ font-size:10.5px; color:#b9fff5; line-height:1.4; opacity:0.85; }
+  .search-input-row{ margin-top:10px; display:flex; gap:6px; }
+  #websearch-input{
+    flex:1; background:rgba(43,246,232,0.05); border:1px solid var(--panel-line); color:var(--neon);
+    font-family:'Share Tech Mono',monospace; font-size:11px; padding:8px; border-radius:2px;
+  }
+  #websearch-go{
+    background:var(--neon); color:#050505; border:none; padding:0 12px; font-family:'Orbitron',sans-serif;
+    font-size:10px; cursor:pointer; border-radius:2px;
+  }
+
+  /* vault */
+  .vault-inputs{ display:flex; flex-direction:column; gap:6px; }
+  #vault-input{
+    background:rgba(43,246,232,0.05); border:1px solid var(--panel-line); color:var(--neon);
+    font-family:'Share Tech Mono',monospace; font-size:11px; padding:8px; border-radius:2px;
+    resize:none; height:44px;
+  }
+  #vault-save{
+    background:transparent; border:1px solid var(--neon); color:var(--neon); padding:7px;
+    font-family:'Orbitron',sans-serif; font-size:10px; letter-spacing:1px; cursor:pointer; border-radius:2px;
+    transition:0.2s;
+  }
+  #vault-save:hover{ background:var(--neon); color:#050505; }
+  .vault-list{ display:flex; flex-direction:column; gap:6px; margin-top:4px; max-height:22vh; overflow-y:auto; }
+  .vault-item{
+    border:1px solid var(--panel-line); padding:6px 8px; font-size:11px; border-radius:2px;
+    display:flex; justify-content:space-between; gap:8px; align-items:flex-start;
+    background:rgba(43,246,232,0.03);
+  }
+  .vault-item .vtext{ color:var(--text-dim); line-height:1.4; word-break:break-word; }
+  .vault-item .vtext b{ color:var(--neon); display:block; font-size:10px; letter-spacing:1px;}
+  .vault-del{ background:none; border:none; color:var(--neon); cursor:pointer; font-size:13px; line-height:1; opacity:0.7;}
+  .vault-del:hover{ opacity:1; }
+  .vault-empty{ color:var(--text-dim); font-size:11px; font-style:italic; }
+
+  /* ---------- bottom command bar ---------- */
+  .command-bar{
+    position:absolute; bottom:26px; left:50%; transform:translate(-50%,0);
+    width:min(560px, 88vw); display:flex; gap:10px; z-index:6; align-items:center;
+  }
+  #text-input{
+    flex:1; background:rgba(10,10,12,0.85); border:1px solid var(--neon-soft); color:var(--neon);
+    font-family:'Share Tech Mono',monospace; font-size:13px; padding:12px 14px; border-radius:3px;
+    outline:none; box-shadow:0 0 14px rgba(43,246,232,0.08) inset;
+  }
+  #text-input::placeholder{ color:var(--text-dim); }
+  #text-send{
+    background:transparent; border:1px solid var(--neon); color:var(--neon); padding:0 18px;
+    font-family:'Orbitron',sans-serif; font-size:11px; letter-spacing:1px; cursor:pointer; border-radius:3px;
+    transition:0.2s;
+  }
+  #text-send:hover{ background:var(--neon); color:#050505; box-shadow:0 0 16px var(--neon); }
+
+  .voice-visualizer{
+    position:absolute; bottom:180px; left:50%; transform:translate(-50%,0);
+    display:flex; gap:3px; align-items:flex-end; height:20px; z-index:6; opacity:0;
+    transition:opacity 0.3s;
+  }
+  #app.speaking .voice-visualizer{ opacity:1; }
+  .voice-visualizer span{
+    width:3px; background:var(--neon); box-shadow:0 0 6px var(--neon-soft); border-radius:1px;
+  }
+
+  /* ---------- tablet tier ---------- */
+  @media (max-width: 900px) and (min-width: 641px){
+    .panel{ width:42vw; padding:10px 12px; }
+    .panel-left{ top:150px; left:10px; }
+    .panel-right{ top:150px; right:10px; }
+    .core-wrap{ width:min(30vh,240px); height:min(30vh,240px); }
+    .earth-wrap{ width:min(90vh,700px); height:min(90vh,700px); }
+    .hud-corner{ font-size:9px; }
+  }
+
+  /* ---------- mobile tier: panels become swipe-up drawers, HUD decluttered ---------- */
+  @media (max-width: 640px){
+    .mobile-tabs{ display:flex; }
+    .panel-close{ display:inline-block; }
+
+    .panel{
+      position:fixed; top:auto; left:0; right:0; bottom:0; width:100%; max-width:none;
+      max-height:64dvh; border-radius:16px 16px 0 0; padding:14px 16px calc(14px + env(safe-area-inset-bottom));
+      transform:translateY(110%); transition:transform 0.3s ease; z-index:20;
+      display:flex; flex-direction:column;
+    }
+    .panel.open{ transform:translateY(0); box-shadow:0 -10px 34px rgba(0,0,0,0.75); }
+
+    .hud-corner{ font-size:8.5px; line-height:1.45; }
+    .corner-br{ display:none; } /* decorative telemetry graph — drop it to reduce clutter */
+    .corner-tl{ top:14px; left:14px; }
+    .corner-tr{ top:14px; right:14px; }
+    .corner-bl{ bottom:14px; left:14px; }
+
+    .core-wrap{ width:52vw; height:52vw; max-width:230px; max-height:230px; }
+    .earth-wrap{ width:min(100vh,560px); height:min(100vh,560px); }
+    .core-status{ top:calc(50% + min(24dvh,175px)); font-size:11px; }
+    .core-status .sub{ font-size:10px; }
+
+    .transcript-bar{ bottom:clamp(92px, 18dvh, 130px); width:90vw; font-size:12px; }
+    .voice-visualizer{ bottom:clamp(148px, 24dvh, 178px); }
+
+    .command-bar{
+      bottom:max(14px, env(safe-area-inset-bottom)); width:92vw; gap:8px;
+    }
+    #text-input{ font-size:16px; padding:11px 12px; } /* 16px prevents iOS auto-zoom on focus */
+    #text-send{ padding:0 14px; }
+
+    .mic-btn{ width:74px; height:74px; }
+    .mic-btn svg{ width:22px; height:22px; }
+  }
+
+  /* very short viewports (landscape phones) — trim vertical footprint further */
+  @media (max-width: 900px) and (max-height: 420px){
+    .core-wrap{ width:34vh; height:34vh; }
+    .core-status{ display:none; }
+    .transcript-bar{ bottom:78px; }
+    .voice-visualizer{ bottom:126px; }
+    .command-bar{ bottom:10px; }
+    .mic-btn{ width:60px; height:60px; }
+  }
+
+  @media (prefers-reduced-motion: reduce){
+    *{ animation-duration:0.001s !important; animation-iteration-count:1 !important; transition-duration:0.001s !important; }
+  }
+</style>
+</head>
+<body>
+<div id="boot-screen">
+  <video id="boot-video" src="boot-animation.mp4" muted playsinline autoplay preload="auto"></video>
+  <button id="boot-skip">SKIP ▸</button>
+  <div id="boot-tap-hint">TAP TO INITIALIZE</div>
+</div>
+<div id="app" class="idle">
+  <div class="grid-overlay"></div>
+  <div class="scanline"></div>
+  <div class="noise-flicker"></div>
+
+  <div class="earth-wrap"><canvas id="earth-canvas"></canvas></div>
+
+  <div class="crosshair">
+    <div class="line h"></div>
+    <div class="line v"></div>
+    <div class="ring" style="width:120px;height:120px;"></div>
+    <div class="ring" style="width:240px;height:240px;"></div>
+  </div>
+
+  <div class="bracket bracket-tl"></div>
+  <div class="bracket bracket-tr"></div>
+  <div class="bracket bracket-bl"></div>
+  <div class="bracket bracket-br"></div>
+
+  <!-- HUD corners -->
+  <div class="hud-corner corner-tl">
+    <div><span class="status-dot"></span><b class="heading">SYSTEM: ONLINE</b></div>
+    <div class="label">CORE TEMP: <b id="core-temp">OPTIMAL</b></div>
+    <div class="label">USER: <b id="user-name-tag">UNIDENTIFIED</b></div>
+  </div>
+  <div class="hud-corner corner-tr">
+    <div class="heading" id="clock">00:00:00</div>
+    <div class="label" id="datestr">--- -- ----</div>
+    <div class="label">UPLINK: <b id="uplink-status">STANDBY</b></div>
+  </div>
+  <div class="hud-corner corner-bl">
+    <div class="label">MIC ARRAY: <b id="mic-status">READY</b></div>
+    <div class="label">VOICE OUT: <b id="voice-status">READY</b></div>
+  </div>
+  <div class="hud-corner corner-br">
+    <div class="label">SIGNAL TELEMETRY</div>
+    <div class="freq-graph" id="freq-graph"></div>
+  </div>
+
+  <!-- mobile-only drawer tabs (hidden on laptop/desktop) -->
+  <div class="mobile-tabs" id="mobile-tabs">
+    <button class="mobile-tab" data-panel="panel-left">LOG</button>
+    <button class="mobile-tab" data-panel="panel-right">LINKS</button>
+  </div>
+
+  <!-- panels -->
+  <div class="panel panel-left" id="panel-left">
+    <button class="panel-close">CLOSE ✕</button>
+    <div class="panel-section">
+      <h3>// INTERACTION LOG</h3>
+      <div class="log-feed" id="log-feed">
+        <div class="log-line sys">JARVIS core initialized. Awaiting input, Sir.</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="panel panel-right" id="panel-right">
+    <button class="panel-close">CLOSE ✕</button>
+    <div class="panel-section">
+      <h3>// RELEVANT LINKS</h3>
+      <div class="relevant-links" id="relevant-links">
+        <div class="rl-empty">No query staged yet. Ask JARVIS something, or type a query below.</div>
+      </div>
+      <div class="search-input-row">
+        <input id="websearch-input" type="text" placeholder="query for direct lookup...">
+        <button id="websearch-go">GO</button>
+      </div>
+    </div>
+
+    <div class="panel-section">
+      <h3>// PERSONAL DATA VAULT</h3>
+      <div class="vault-inputs">
+        <textarea id="vault-input" placeholder="Store a note, fact, or reminder... (or just say 'remember that...')"></textarea>
+        <button id="vault-save">SAVE TO VAULT</button>
+      </div>
+      <div class="vault-list" id="vault-list">
+        <div class="vault-empty">Vault empty. Nothing stored yet, Sir.</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- central core -->
+  <div class="core-wrap">
+    <div class="ripple"></div>
+    <div class="ripple"></div>
+    <div class="ripple"></div>
+    <svg class="core-svg" viewBox="0 0 200 200">
+      <defs>
+        <radialGradient id="coreGlow" cx="50%" cy="50%" r="50%">
+          <stop offset="0%" stop-color="#f2fffd"/>
+          <stop offset="30%" stop-color="#6dfff0"/>
+          <stop offset="75%" stop-color="#2bf6e8"/>
+          <stop offset="100%" stop-color="#003a35" stop-opacity="0.2"/>
+        </radialGradient>
+      </defs>
+      <circle class="ring ring1" cx="100" cy="100" r="94"/>
+      <circle class="ring ring2" cx="100" cy="100" r="80"/>
+      <circle class="ring ring3" cx="100" cy="100" r="66"/>
+      <g id="tickmarks"></g>
+      <circle class="core-center" cx="100" cy="100" r="34"/>
+    </svg>
+    <button class="mic-btn" id="mic-btn" aria-label="Activate JARVIS microphone">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6">
+        <path d="M12 15a3 3 0 0 0 3-3V6a3 3 0 0 0-6 0v6a3 3 0 0 0 3 3z"/>
+        <path d="M19 11a7 7 0 0 1-14 0"/>
+        <line x1="12" y1="18" x2="12" y2="22"/>
+      </svg>
+      <span id="mic-label">ACTIVATE</span>
+    </button>
+  </div>
+
+  <div class="core-status">
+    <span id="core-status-main">STANDBY</span>
+    <span class="sub" id="core-status-sub">Say a command, or type below</span>
+  </div>
+
+  <div class="voice-visualizer" id="voice-visualizer"></div>
+  <div class="transcript-bar" id="transcript-bar"></div>
+
+  <div class="command-bar">
+    <input id="text-input" type="text" placeholder="Type a command or query, Sir..." autocomplete="off">
+    <button id="text-send">SEND</button>
+  </div>
+
+  <div class="vignette"></div>
+</div>
+
+<script>
+(function(){
+  "use strict";
+
+  /* ============ small setup ============ */
+  const app = document.getElementById('app');
+  const logFeed = document.getElementById('log-feed');
+  const transcriptBar = document.getElementById('transcript-bar');
+  const coreStatusMain = document.getElementById('core-status-main');
+  const coreStatusSub = document.getElementById('core-status-sub');
+  const micBtn = document.getElementById('mic-btn');
+  const micLabel = document.getElementById('mic-label');
+  const textInput = document.getElementById('text-input');
+  const textSend = document.getElementById('text-send');
+  const voiceVis = document.getElementById('voice-visualizer');
+  const micStatusEl = document.getElementById('mic-status');
+  const voiceStatusEl = document.getElementById('voice-status');
+  const uplinkStatusEl = document.getElementById('uplink-status');
+  const coreTempEl = document.getElementById('core-temp');
+  const userNameTag = document.getElementById('user-name-tag');
+
+  let ADDRESS = 'Sir'; // default form of address; personalized once a name is stored
+
+  /* ============ boot / startup video sequence ============ */
+  (function initBoot(){
+    const bootScreen = document.getElementById('boot-screen');
+    const bootVideo = document.getElementById('boot-video');
+    const bootSkip = document.getElementById('boot-skip');
+    const bootTapHint = document.getElementById('boot-tap-hint');
+    let finished = false;
+
+    function finishBoot(){
+      if(finished) return;
+      finished = true;
+      bootScreen.classList.add('hide');
+      try{ bootVideo.pause(); }catch(e){}
+      setTimeout(()=>{ if(bootScreen.parentNode) bootScreen.parentNode.removeChild(bootScreen); }, 850);
+    }
+
+    bootVideo.addEventListener('ended', finishBoot);
+    bootVideo.addEventListener('error', finishBoot);
+    bootSkip.addEventListener('click', finishBoot);
+    bootScreen.addEventListener('click', (e) => {
+      if(e.target === bootSkip) return;
+      bootVideo.play().catch(()=>{});
+      bootTapHint.classList.remove('show');
+    });
+
+    const playAttempt = bootVideo.play();
+    if(playAttempt && playAttempt.catch){
+      playAttempt.catch(() => {
+        // autoplay was blocked by the browser — prompt for a tap to start it
+        bootTapHint.classList.add('show');
+      });
+    }
+    // never trap the user behind the intro if the video can't load or play
+    setTimeout(finishBoot, 20000);
+  })();
+
+  /* ============ mobile panel drawers ============ */
+  (function initMobilePanels(){
+    const tabs = document.querySelectorAll('.mobile-tab');
+    function closeAll(){
+      document.querySelectorAll('.panel').forEach(p=>p.classList.remove('open'));
+      tabs.forEach(t=>t.classList.remove('active'));
+    }
+    tabs.forEach(tab=>{
+      tab.addEventListener('click', () => {
+        const panel = document.getElementById(tab.dataset.panel);
+        if(!panel) return;
+        const willOpen = !panel.classList.contains('open');
+        closeAll();
+        if(willOpen){
+          panel.classList.add('open');
+          tab.classList.add('active');
+        }
+      });
+    });
+    document.querySelectorAll('.panel-close').forEach(btn=>{
+      btn.addEventListener('click', closeAll);
+    });
+  })();
+
+  // build freq bars + tick marks + visualizer bars
+  const freqGraph = document.getElementById('freq-graph');
+  for(let i=0;i<14;i++){
+    const s = document.createElement('span');
+    s.style.animationDelay = (Math.random()*1.2).toFixed(2)+'s';
+    s.style.height = (4+Math.random()*20)+'px';
+    freqGraph.appendChild(s);
+  }
+  for(let i=0;i<24;i++){
+    const b = document.createElement('span');
+    b.style.animationDelay = (Math.random()*0.4).toFixed(2)+'s';
+    voiceVis.appendChild(b);
+  }
+  function animateVisualizer(active){
+    voiceVis.querySelectorAll('span').forEach(b=>{
+      b.style.height = active ? (4+Math.random()*22)+'px' : '3px';
+    });
+  }
+  let visInterval = null;
+
+  const tickG = document.getElementById('tickmarks');
+  for(let i=0;i<60;i++){
+    const angle = (i/60)*2*Math.PI;
+    const long = i % 5 === 0;
+    const r1 = 94, r2 = long ? 88 : 91;
+    const x1 = 100 + r1*Math.cos(angle), y1 = 100 + r1*Math.sin(angle);
+    const x2 = 100 + r2*Math.cos(angle), y2 = 100 + r2*Math.sin(angle);
+    const line = document.createElementNS('http://www.w3.org/2000/svg','line');
+    line.setAttribute('x1',x1); line.setAttribute('y1',y1);
+    line.setAttribute('x2',x2); line.setAttribute('y2',y2);
+    line.setAttribute('stroke', 'var(--neon)');
+    line.setAttribute('stroke-width', long ? 1.2 : 0.6);
+    line.setAttribute('opacity', long ? 0.7 : 0.35);
+    tickG.appendChild(line);
+  }
+
+  /* ============ clock ============ */
+  function tickClock(){
+    const now = new Date();
+    document.getElementById('clock').textContent = now.toLocaleTimeString('en-GB');
+    document.getElementById('datestr').textContent = now.toLocaleDateString('en-GB', {day:'2-digit', month:'short', year:'numeric'}).toUpperCase();
+  }
+  tickClock();
+  setInterval(tickClock, 1000);
+
+  const coreTemps = ['OPTIMAL','NOMINAL','STABLE'];
+  setInterval(()=>{ coreTempEl.textContent = coreTemps[Math.floor(Math.random()*coreTemps.length)]; }, 8000);
+
+  /* ============ logging ============ */
+  function logLine(text, cls){
+    const div = document.createElement('div');
+    div.className = 'log-line ' + cls;
+    div.textContent = text;
+    logFeed.appendChild(div);
+    logFeed.scrollTop = logFeed.scrollHeight;
+  }
+
+  /* ============ state machine ============ */
+  function setState(state){
+    app.classList.remove('idle','listening','speaking','processing');
+    app.classList.add(state);
+    if(state==='idle'){
+      coreStatusMain.textContent = 'STANDBY';
+      coreStatusSub.textContent = 'Say a command, or type below';
+      micBtn.classList.remove('disabled');
+    } else if(state==='listening'){
+      coreStatusMain.textContent = 'LISTENING...';
+      coreStatusSub.textContent = 'Speak now';
+    } else if(state==='processing'){
+      coreStatusMain.textContent = 'PROCESSING';
+      coreStatusSub.textContent = 'Accessing external telemetry';
+      micBtn.classList.add('disabled');
+    } else if(state==='speaking'){
+      coreStatusMain.textContent = 'RESPONDING';
+      coreStatusSub.textContent = '';
+      micBtn.classList.add('disabled'); // prevent mic picking up JARVIS's own voice
+    }
+  }
+
+  /* ================================================================
+     EARTH GLOBE (wireframe canvas, ambient background)
+  ================================================================= */
+  const earthCanvas = document.getElementById('earth-canvas');
+  const ectx = earthCanvas.getContext('2d');
+  let earthSize = 0;
+  function sizeEarthCanvas(){
+    const wrap = earthCanvas.parentElement;
+    const rect = wrap.getBoundingClientRect();
+    earthSize = rect.width;
+    const dpr = window.devicePixelRatio || 1;
+    earthCanvas.width = earthSize * dpr;
+    earthCanvas.height = earthSize * dpr;
+    ectx.setTransform(dpr,0,0,dpr,0,0);
+  }
+  sizeEarthCanvas();
+  window.addEventListener('resize', sizeEarthCanvas);
+
+  const DEG = Math.PI/180;
+  const TILT = 16*DEG;
+  function projectPoint(latDeg, lonDeg, spin){
+    const lat = latDeg*DEG, lon = lonDeg*DEG;
+    let x = Math.cos(lat)*Math.sin(lon);
+    let y = Math.sin(lat);
+    let z = Math.cos(lat)*Math.cos(lon);
+    const cosA=Math.cos(spin), sinA=Math.sin(spin);
+    const x1 = x*cosA + z*sinA;
+    const z1 = -x*sinA + z*cosA;
+    const cosT=Math.cos(TILT), sinT=Math.sin(TILT);
+    const y2 = y*cosT - z1*sinT;
+    const z2 = y*sinT + z1*cosT;
+    return {x:x1, y:y2, z:z2};
+  }
+
+  const CITIES = [
+    {name:'NYC', lat:40.7, lon:-74.0},
+    {name:'LON', lat:51.5, lon:-0.1},
+    {name:'TOK', lat:35.7, lon:139.7},
+    {name:'SYD', lat:-33.9, lon:151.2},
+    {name:'MOW', lat:55.75, lon:37.6},
+    {name:'CAI', lat:30.0, lon:31.2},
+    {name:'RIO', lat:-22.9, lon:-43.2},
+    {name:'BOM', lat:19.07, lon:72.87},
+    {name:'PEK', lat:39.9, lon:116.4},
+    {name:'CPT', lat:-33.9, lon:18.4}
+  ];
+
+  let spinAngle = 0;
+  function drawEarth(){
+    const size = earthSize;
+    if(!size){ requestAnimationFrame(drawEarth); return; }
+    const cx = size/2, cy = size/2, R = size/2 - 6;
+    ectx.clearRect(0,0,size,size);
+
+    // outer disc rim
+    ectx.strokeStyle = 'rgba(43,246,232,0.55)';
+    ectx.lineWidth = 1.2;
+    ectx.beginPath(); ectx.arc(cx,cy,R,0,Math.PI*2); ectx.stroke();
+
+    // parallels (latitude lines)
+    for(let lat=-60; lat<=60; lat+=30){
+      let prev = null;
+      for(let lon=0; lon<=360; lon+=8){
+        const p = projectPoint(lat, lon, spinAngle);
+        const sx = cx + p.x*R, sy = cy - p.y*R;
+        if(prev){
+          const alpha = 0.08 + Math.max(0,(p.z+1)/2) * 0.4;
+          ectx.strokeStyle = 'rgba(43,246,232,'+alpha.toFixed(2)+')';
+          ectx.lineWidth = 0.8;
+          ectx.beginPath(); ectx.moveTo(prev.sx,prev.sy); ectx.lineTo(sx,sy); ectx.stroke();
+        }
+        prev = {sx,sy};
+      }
+    }
+    // meridians (longitude lines)
+    for(let lon=0; lon<360; lon+=30){
+      let prev = null;
+      for(let lat=-90; lat<=90; lat+=8){
+        const p = projectPoint(lat, lon, spinAngle);
+        const sx = cx + p.x*R, sy = cy - p.y*R;
+        if(prev){
+          const alpha = 0.08 + Math.max(0,(p.z+1)/2) * 0.35;
+          ectx.strokeStyle = 'rgba(43,246,232,'+alpha.toFixed(2)+')';
+          ectx.lineWidth = 0.7;
+          ectx.beginPath(); ectx.moveTo(prev.sx,prev.sy); ectx.lineTo(sx,sy); ectx.stroke();
+        }
+        prev = {sx,sy};
+      }
+    }
+    // city markers
+    CITIES.forEach(c=>{
+      const p = projectPoint(c.lat, c.lon, spinAngle);
+      if(p.z < -0.15) return; // hidden on far side
+      const sx = cx + p.x*R, sy = cy - p.y*R;
+      const alpha = 0.35 + Math.max(0,(p.z+1)/2) * 0.65;
+      ectx.fillStyle = 'rgba(90,255,235,'+alpha.toFixed(2)+')';
+      ectx.beginPath(); ectx.arc(sx,sy,2.2,0,Math.PI*2); ectx.fill();
+      ectx.shadowColor = 'rgba(43,246,232,0.8)';
+      ectx.shadowBlur = 6;
+    });
+    ectx.shadowBlur = 0;
+
+    spinAngle += 0.0028;
+    requestAnimationFrame(drawEarth);
+  }
+  requestAnimationFrame(drawEarth);
+
+  /* fact card removed per request — earth stays as a silent rotating backdrop */
+
+  /* ================================================================
+     PERSONAL DATA VAULT (persisted via window.storage, personal scope)
+  ================================================================= */
+  const vaultListEl = document.getElementById('vault-list');
+  const vaultInput = document.getElementById('vault-input');
+  const vaultSaveBtn = document.getElementById('vault-save');
+
+  async function vaultAdd(content){
+    content = content.trim();
+    if(!content) return null;
+    const id = 'vault-entry:' + Date.now() + '-' + Math.floor(Math.random()*1000);
+    const title = content.split(/\s+/).slice(0,5).join(' ');
+    try{
+      await window.storage.set(id, JSON.stringify({title, content, ts:Date.now()}), false);
+      await refreshVaultList();
+      return true;
+    } catch(e){
+      logLine('Vault write failed: storage unavailable.', 'sys');
+      return false;
+    }
+  }
+  async function vaultList(){
+    try{
+      const res = await window.storage.list('vault-entry:', false);
+      if(!res || !res.keys) return [];
+      const items = [];
+      for(const k of res.keys){
+        try{
+          const r = await window.storage.get(k, false);
+          if(r && r.value) items.push({key:k, ...JSON.parse(r.value)});
+        } catch(e){ /* skip unreadable entry */ }
+      }
+      items.sort((a,b)=> (b.ts||0) - (a.ts||0));
+      return items;
+    } catch(e){
+      return [];
+    }
+  }
+  async function vaultDelete(key){
+    try{
+      await window.storage.delete(key, false);
+      await refreshVaultList();
+    } catch(e){ /* ignore */ }
+  }
+  async function vaultSearch(query){
+    const items = await vaultList();
+    const q = (query||'').toLowerCase().trim();
+    if(!q) return items;
+    return items.filter(it => it.content.toLowerCase().includes(q) || it.title.toLowerCase().includes(q));
+  }
+  async function refreshVaultList(){
+    const items = await vaultList();
+    vaultListEl.innerHTML = '';
+    if(!items.length){
+      vaultListEl.innerHTML = '<div class="vault-empty">Vault empty. Nothing stored yet, '+ADDRESS+'.</div>';
+      return;
+    }
+    items.forEach(it=>{
+      const row = document.createElement('div');
+      row.className = 'vault-item';
+      const textDiv = document.createElement('div');
+      textDiv.className = 'vtext';
+      const dt = new Date(it.ts || Date.now());
+      textDiv.innerHTML = '<b>'+dt.toLocaleDateString()+'</b>';
+      textDiv.appendChild(document.createTextNode(it.content));
+      const delBtn = document.createElement('button');
+      delBtn.className = 'vault-del';
+      delBtn.textContent = '\u2715';
+      delBtn.title = 'Delete entry';
+      delBtn.addEventListener('click', ()=>vaultDelete(it.key));
+      row.appendChild(textDiv);
+      row.appendChild(delBtn);
+      vaultListEl.appendChild(row);
+    });
+  }
+  vaultSaveBtn.addEventListener('click', async () => {
+    const val = vaultInput.value.trim();
+    if(!val) return;
+    const ok = await vaultAdd(val);
+    if(ok){ vaultInput.value=''; logLine('Stored to personal vault: "'+val+'"', 'sys'); }
+  });
+
+  /* ============ profile name (personalization) ============ */
+  async function loadProfileName(){
+    try{
+      const r = await window.storage.get('profile:name', false);
+      if(r && r.value){
+        ADDRESS = r.value;
+        userNameTag.textContent = r.value.toUpperCase();
+      }
+    } catch(e){ /* no profile set yet */ }
+  }
+  async function saveProfileName(name){
+    ADDRESS = name;
+    userNameTag.textContent = name.toUpperCase();
+    try{ await window.storage.set('profile:name', name, false); } catch(e){}
+  }
+
+  refreshVaultList();
+  loadProfileName();
+
+  /* ============ speech synthesis (TTS) ============ */
+  let voices = [];
+  let chosenVoice = null;
+  function loadVoices(){
+    voices = window.speechSynthesis ? window.speechSynthesis.getVoices() : [];
+    if(!voices.length) return;
+    const prefs = [
+      v => /Google UK English Female/i.test(v.name),
+      v => /Google US English/i.test(v.name) && /female/i.test(v.name),
+      v => /Zira/i.test(v.name),
+      v => /female/i.test(v.name) && /UK|British/i.test(v.name),
+      v => /female/i.test(v.name),
+      v => /Samantha|Victoria|Karen|Moira|Tessa|Susan|Allison|Ava|Serena|Fiona|Kate|Olivia|Emma|Joanna|Salli|Aria|Jenny/i.test(v.name),
+      v => v.lang === 'en-GB' && !/Male|Daniel|Arthur|Ryan|George/i.test(v.name),
+      v => /en-/i.test(v.lang) && !/Male|Daniel|Arthur|Ryan|George|David|Mark|Guy/i.test(v.name),
+      v => /en-/i.test(v.lang)
+    ];
+    for(const pref of prefs){
+      const found = voices.find(pref);
+      if(found){ chosenVoice = found; break; }
+    }
+    if(!chosenVoice && voices.length) chosenVoice = voices[0];
+  }
+  if('speechSynthesis' in window){
+    loadVoices();
+    window.speechSynthesis.onvoiceschanged = loadVoices;
+  } else {
+    voiceStatusEl.textContent = 'UNAVAILABLE';
+  }
+
+  function speak(text){
+    text = text.replace(/\{ADDRESS\}/g, ADDRESS);
+    logLine(text, 'jarvis');
+    if(!('speechSynthesis' in window)){
+      setState('idle');
+      resumeMicIfAwaited();
+      return;
+    }
+    try{
+      window.speechSynthesis.cancel();
+      const utter = new SpeechSynthesisUtterance(text);
+      if(chosenVoice) utter.voice = chosenVoice;
+      utter.pitch = 1.25;
+      utter.rate = 1.12;
+      utter.onstart = () => {
+        setState('speaking');
+        visInterval = setInterval(()=>animateVisualizer(true), 90);
+      };
+      utter.onend = () => {
+        clearInterval(visInterval);
+        animateVisualizer(false);
+        setState('idle');
+        resumeMicIfAwaited();
+      };
+      utter.onerror = () => {
+        clearInterval(visInterval);
+        animateVisualizer(false);
+        setState('idle');
+        resumeMicIfAwaited();
+      };
+      window.speechSynthesis.speak(utter);
+    } catch(e){
+      setState('idle');
+      resumeMicIfAwaited();
+    }
+  }
+
+  /* ============ speech recognition (STT) - hardened ============ */
+  const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+  let recognition = null;
+  let recognizing = false;
+  let micStarting = false;      // guards against overlapping start() calls (InvalidStateError)
+  let micPreflightDone = false;
+  let awaitingMicResume = false; // true only when the last input came from voice, so we know to re-arm the mic after JARVIS replies
+
+  // Two conditions silently break mic access in most browsers, independent of
+  // the SpeechRecognition API itself: (1) not being served over HTTPS (or
+  // localhost), and (2) running inside a cross-origin iframe / embedded
+  // preview that hasn't been granted the "microphone" permissions policy.
+  // Surface both clearly instead of leaving the mic button looking dead.
+  const isSecure = window.isSecureContext === true;
+  const isEmbedded = (() => { try { return window.self !== window.top; } catch(e){ return true; } })();
+
+  function micHardBlockMessage(){
+    if(!isSecure){
+      return 'Voice input requires a secure connection (HTTPS) or localhost. This page is currently loaded over an insecure origin, so the browser is blocking microphone access entirely. Serve this file over HTTPS (e.g. once deployed to your domain) to enable voice control.';
+    }
+    if(isEmbedded){
+      return 'Voice input is being blocked because this page is running inside an embedded preview frame, which browsers do not grant microphone access to by default. Open this file in its own browser tab (or visit it at your deployed URL) to use voice control. Text uplink works normally here.';
+    }
+    return null;
+  }
+
+  (function initMicGate(){
+    const blockMsg = micHardBlockMessage();
+    if(blockMsg){
+      micStatusEl.textContent = isSecure ? 'FRAME-BLOCKED' : 'INSECURE ORIGIN';
+      micLabel.textContent = 'TEXT ONLY';
+      setTimeout(()=> logLine(blockMsg, 'sys'), 900);
+    }
+  })();
+
+  function startRecognitionSafely(){
+    if(!SR || recognizing || micStarting) return;
+    micStarting = true;
+    try{
+      recognition = buildRecognition();
+      recognition.start();
+    } catch(e){
+      // "already started" / transient InvalidStateError — drop it and let the
+      // user just click the mic again instead of leaving it silently dead.
+      micStarting = false;
+      logLine('Unable to initialize microphone array. Tap ACTIVATE to retry, ' + ADDRESS + '.', 'sys');
+    }
+  }
+
+  function resumeMicIfAwaited(){
+    if(!awaitingMicResume) return;
+    awaitingMicResume = false;
+    if(!SR || micHardBlockMessage() || recognizing) return;
+    setTimeout(startRecognitionSafely, 450); // brief pause so JARVIS's own voice tail isn't picked up
+  }
+
+  function buildRecognition(){
+    const r = new SR();
+    r.continuous = false;
+    r.interimResults = true;
+    // Let the browser pick its default recognition language instead of forcing en-GB,
+    // which caused "language-not-supported" failures on some systems.
+    try{ r.lang = navigator.language || 'en-US'; } catch(e){ r.lang = 'en-US'; }
+
+    r.onstart = () => {
+      recognizing = true;
+      micStarting = false;
+      setState('listening');
+      micLabel.textContent = 'LISTENING';
+      uplinkStatusEl.textContent = 'ACTIVE';
+      micStatusEl.textContent = 'READY';
+      transcriptBar.textContent = '';
+    };
+    r.onresult = (event) => {
+      let interim = '', final = '';
+      for(let i=event.resultIndex;i<event.results.length;i++){
+        const t = event.results[i][0].transcript;
+        if(event.results[i].isFinal) final += t;
+        else interim += t;
+      }
+      transcriptBar.textContent = final || interim;
+      if(final.trim()){
+        awaitingMicResume = true; // came from voice, so re-arm the mic once JARVIS finishes replying
+        handleUserInput(final.trim());
+      }
+    };
+    r.onerror = (e) => {
+      recognizing = false;
+      micStarting = false;
+      micLabel.textContent = 'ACTIVATE';
+      uplinkStatusEl.textContent = 'STANDBY';
+      if(app.classList.contains('listening')) setState('idle');
+      if(e.error === 'not-allowed' || e.error === 'permission-denied' || e.error === 'service-not-allowed'){
+        micStatusEl.textContent = 'DENIED';
+        awaitingMicResume = false;
+        logLine('Microphone access denied or blocked (this can happen in embedded previews). Check the site permissions icon in your address bar and allow microphone access, then tap ACTIVATE again. Text uplink remains available.', 'sys');
+      } else if(e.error === 'no-speech'){
+        transcriptBar.textContent = '';
+      } else if(e.error === 'audio-capture'){
+        micStatusEl.textContent = 'NO DEVICE';
+        awaitingMicResume = false;
+        logLine('No microphone was detected, ' + ADDRESS + '. Check that one is connected and not in use by another application.', 'sys');
+      } else if(e.error === 'network'){
+        logLine('Voice recognition network error. Check your connection and try again, or use text input.', 'sys');
+      } else if(e.error === 'aborted'){
+        // user or system stopped it intentionally; no need to log noise
+      } else {
+        logLine('Voice recognition error: ' + e.error, 'sys');
+      }
+    };
+    r.onend = () => {
+      recognizing = false;
+      micStarting = false;
+      micLabel.textContent = 'ACTIVATE';
+      uplinkStatusEl.textContent = 'STANDBY';
+      if(app.classList.contains('listening')) setState('idle');
+    };
+    return r;
+  }
+
+  if(!SR){
+    micStatusEl.textContent = 'UNSUPPORTED';
+    micLabel.textContent = 'TEXT ONLY';
+    micBtn.classList.add('disabled');
+  }
+
+  async function preflightMic(){
+    if(micPreflightDone) return true;
+    if(!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia){
+      micPreflightDone = true;
+      return true; // can't preflight; let SpeechRecognition try directly
+    }
+    try{
+      const stream = await navigator.mediaDevices.getUserMedia({audio:true});
+      stream.getTracks().forEach(t => t.stop());
+      micStatusEl.textContent = 'READY';
+      micPreflightDone = true;
+      return true;
+    } catch(e){
+      micStatusEl.textContent = 'BLOCKED';
+      let msg;
+      if(e.name === 'NotFoundError'){
+        msg = 'No microphone was detected on this device, ' + ADDRESS + '. Connect a microphone and try again.';
+      } else if(e.name === 'NotAllowedError' || e.name === 'PermissionDeniedError'){
+        msg = 'Microphone permission was denied. Check your browser\'s site settings (the padlock icon in the address bar) and allow microphone access for this page, then try again.';
+      } else if(e.name === 'NotReadableError'){
+        msg = 'The microphone is in use by another application and could not be accessed.';
+      } else {
+        msg = 'Microphone permission was blocked (' + (e.name||'unknown error') + '). If this is running inside an embedded preview, voice input may be restricted by the browser sandbox — open the file directly in a browser tab for full mic support.';
+      }
+      logLine(msg, 'sys');
+      return false;
+    }
+  }
+
+  micBtn.addEventListener('click', async () => {
+    const blockMsg = micHardBlockMessage();
+    if(blockMsg){
+      logLine(blockMsg, 'sys');
+      textInput.focus();
+      return;
+    }
+    if(!SR){
+      logLine('Speech recognition unsupported in this browser. Use the text uplink below, ' + ADDRESS + '.', 'sys');
+      textInput.focus();
+      return;
+    }
+    if(app.classList.contains('speaking') || app.classList.contains('processing')) return;
+    if(recognizing){
+      awaitingMicResume = false; // manual stop — don't auto re-arm after this
+      recognition.stop();
+      return;
+    }
+    if(micStarting) return; // a start is already in flight, avoid double-init
+    window.speechSynthesis && window.speechSynthesis.cancel();
+    const ok = await preflightMic();
+    if(!ok) return;
+    startRecognitionSafely();
+  });
+
+  /* ============ text input fallback ============ */
+  function sendText(){
+    const val = textInput.value.trim();
+    if(!val) return;
+    textInput.value = '';
+    handleUserInput(val);
+  }
+  textSend.addEventListener('click', sendText);
+  textInput.addEventListener('keydown', (e) => { if(e.key === 'Enter') sendText(); });
+
+  /* ============ relevant links panel ============ */
+  const relevantLinksEl = document.getElementById('relevant-links');
+  function escapeHtml(str){
+    return String(str).replace(/[&<>"']/g, ch => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch]));
+  }
+  function renderRelevantLinks(links, query){
+    if(!links || !links.length){
+      relevantLinksEl.innerHTML = '<div class="rl-empty">No indexed links found' + (query ? ' for &ldquo;' + escapeHtml(query) + '&rdquo;' : '') + ', ' + ADDRESS + '.</div>';
+      return;
+    }
+    relevantLinksEl.innerHTML = links.map(l => (
+      '<a class="rl-item" href="' + escapeHtml(l.url) + '" target="_blank" rel="noopener">' +
+        '<div class="rl-title">' + escapeHtml(l.title) + '</div>' +
+        '<div class="rl-url">' + escapeHtml(l.url) + '</div>' +
+        (l.snippet ? '<div class="rl-snip">' + escapeHtml(l.snippet.length > 110 ? l.snippet.slice(0,110) + '\u2026' : l.snippet) + '</div>' : '') +
+      '</a>'
+    )).join('');
+  }
+  async function fetchRelevantLinks(query){
+    const target = 'https://api.duckduckgo.com/?q=' + encodeURIComponent(query) + '&format=json&no_html=1&skip_disambig=1';
+    const proxied = 'https://api.allorigins.win/raw?url=' + encodeURIComponent(target);
+    const res = await fetch(proxied);
+    if(!res.ok) throw new Error('links-miss');
+    const data = await res.json();
+    const links = [];
+    const seen = new Set();
+    function push(title, url, snippet){
+      if(!url || seen.has(url)) return;
+      seen.add(url);
+      links.push({ title: cleanText(title).slice(0,80) || url, url, snippet: cleanText(snippet||'') });
+    }
+    if(data.AbstractURL) push(data.Heading || query, data.AbstractURL, data.AbstractText);
+    (function walk(topics){
+      (topics||[]).forEach(t=>{
+        if(t.FirstURL && t.Text){
+          const title = t.Text.split(' - ')[0];
+          push(title, t.FirstURL, t.Text);
+        } else if(t.Topics){
+          walk(t.Topics);
+        }
+      });
+    })(data.RelatedTopics);
+    (data.Results||[]).forEach(r => { if(r.FirstURL && r.Text) push(r.Text.split(' - ')[0], r.FirstURL, r.Text); });
+    return links.slice(0,8);
+  }
+  async function stageRelevantLinks(query){
+    relevantLinksEl.innerHTML = '<div class="rl-loading">Scanning for relevant links\u2026</div>';
+    try{
+      const links = await fetchRelevantLinks(query);
+      renderRelevantLinks(links, query);
+    } catch(e){
+      relevantLinksEl.innerHTML = '<div class="rl-empty">Link index unreachable, ' + ADDRESS + '.</div>';
+    }
+  }
+  document.getElementById('websearch-go').addEventListener('click', () => {
+    const q = document.getElementById('websearch-input').value.trim();
+    if(!q) return;
+    stageRelevantLinks(q);
+  });
+  document.getElementById('websearch-input').addEventListener('keydown', (e) => {
+    if(e.key === 'Enter'){
+      const q = e.target.value.trim();
+      if(q) stageRelevantLinks(q);
+    }
+  });
+
+  /* ============ local command handlers ============ */
+  function tryLocalCommand(raw){
+    const q = raw.toLowerCase().trim().replace(/[?.!]+$/,'');
+
+    if(/^(system status|status report|report status)/.test(q)){
+      return 'All systems are functioning within normal parameters, {ADDRESS}. Core temperature optimal, voice and recognition subsystems online, no anomalies detected.';
+    }
+    if(/^(who are you|what are you|introduce yourself)/.test(q)){
+      return "I am JARVIS, a virtual intelligence interface built to assist you with information retrieval, system monitoring, personal notes, and general queries. At your service, {ADDRESS}.";
+    }
+    if(/^(clear display|clear screen|clear log)/.test(q)){
+      logFeed.innerHTML = '';
+      return 'Display cleared, {ADDRESS}.';
+    }
+    if(/^(what.?s the time|current time|time is it|what time)/.test(q)){
+      return 'The current time is ' + new Date().toLocaleTimeString('en-GB') + ', {ADDRESS}.';
+    }
+    if(/^(what.?s the date|today.?s date|what day)/.test(q)){
+      return "Today's date is " + new Date().toLocaleDateString('en-GB',{weekday:'long', day:'numeric', month:'long', year:'numeric'}) + ', {ADDRESS}.';
+    }
+    if(/weather/.test(q)){
+      return "I do not have a live meteorological feed wired in, {ADDRESS}. I've opened a direct weather lookup on your HUD for the nearest available data.";
+    }
+    if(/^(help|what can you do|commands)/.test(q)){
+      return "You may ask for a system status report, the time or date, or say 'clear display'. I can solve arithmetic and single-variable equations directly — try 'what is 24 times 17' or 'solve 2x plus 5 equals 17' — and I'll route anything I can't parse to Google. Say 'remember that...' to store a personal note, or 'what do you remember about...' to recall one. Anything else, I will query external telemetry for, {ADDRESS}.";
+    }
+    if(/^(thank you|thanks)/.test(q)){
+      return "Always a pleasure, {ADDRESS}.";
+    }
+    return null;
+  }
+
+  function isWeatherQuery(q){ return /weather/i.test(q); }
+
+  /* ================================================================
+     MATH ENGINE — safe expression evaluator + equation solving.
+     No eval()/Function() on user text: a hand-rolled tokenizer and
+     recursive-descent parser only ever produce arithmetic, so it
+     can't execute arbitrary code.
+  ================================================================= */
+  const MATH_CONSTS = { pi: Math.PI, e: Math.E };
+  const MATH_FUNCS = {
+    sqrt: Math.sqrt, sin: Math.sin, cos: Math.cos, tan: Math.tan,
+    asin: Math.asin, acos: Math.acos, atan: Math.atan,
+    log: Math.log10, ln: Math.log, abs: Math.abs,
+    round: Math.round, floor: Math.floor, ceil: Math.ceil,
+    exp: Math.exp, cbrt: Math.cbrt
+  };
+
+  function tokenizeMath(src){
+    const tokens = [];
+    let i = 0;
+    while(i < src.length){
+      const c = src[i];
+      if(/\s/.test(c)){ i++; continue; }
+      if(/[0-9.]/.test(c)){
+        let j = i;
+        while(j < src.length && /[0-9.]/.test(src[j])) j++;
+        tokens.push({t:'num', v:parseFloat(src.slice(i,j))});
+        i = j; continue;
+      }
+      if(/[a-zA-Z]/.test(c)){
+        let j = i;
+        while(j < src.length && /[a-zA-Z]/.test(src[j])) j++;
+        tokens.push({t:'id', v:src.slice(i,j).toLowerCase()});
+        i = j; continue;
+      }
+      if('+-*/^%(),!'.includes(c)){
+        tokens.push({t:c});
+        i++; continue;
+      }
+      throw new Error('unexpected character: ' + c);
+    }
+    return tokens;
+  }
+
+  function parseMath(tokens, varName, varValue){
+    let pos = 0;
+    function peek(){ return tokens[pos]; }
+    function next(){ return tokens[pos++]; }
+    function expectExpr(){
+      let v = parseAddSub();
+      return v;
+    }
+    function parseAddSub(){
+      let v = parseMulDiv();
+      while(peek() && (peek().t === '+' || peek().t === '-')){
+        const op = next().t;
+        const rhs = parseMulDiv();
+        v = op === '+' ? v + rhs : v - rhs;
+      }
+      return v;
+    }
+    function parseMulDiv(){
+      let v = parsePow();
+      while(peek() && (peek().t === '*' || peek().t === '/' || peek().t === '%')){
+        const op = next().t;
+        const rhs = parsePow();
+        if(op === '*') v = v * rhs;
+        else if(op === '/') v = v / rhs;
+        else v = v % rhs;
+      }
+      return v;
+    }
+    function parsePow(){
+      let v = parseUnary();
+      if(peek() && peek().t === '^'){
+        next();
+        const rhs = parsePow(); // right-associative
+        v = Math.pow(v, rhs);
+      }
+      return v;
+    }
+    function parseUnary(){
+      if(peek() && peek().t === '-'){ next(); return -parseUnary(); }
+      if(peek() && peek().t === '+'){ next(); return parseUnary(); }
+      return parsePostfix();
+    }
+    function parsePostfix(){
+      let v = parsePrimary();
+      while(peek() && peek().t === '!'){
+        next();
+        if(v < 0 || Math.floor(v) !== v) throw new Error('factorial needs a non-negative integer');
+        let f = 1; for(let k=2;k<=v;k++) f*=k;
+        v = f;
+      }
+      return v;
+    }
+    function parsePrimary(){
+      const tok = peek();
+      if(!tok) throw new Error('unexpected end of expression');
+      if(tok.t === 'num'){ next(); return tok.v; }
+      if(tok.t === '('){
+        next();
+        const v = expectExpr();
+        if(!peek() || peek().t !== ')') throw new Error('missing closing parenthesis');
+        next();
+        return v;
+      }
+      if(tok.t === 'id'){
+        next();
+        const name = tok.v;
+        if(peek() && peek().t === '('){
+          next();
+          const args = [expectExpr()];
+          while(peek() && peek().t === ','){ next(); args.push(expectExpr()); }
+          if(!peek() || peek().t !== ')') throw new Error('missing closing parenthesis');
+          next();
+          if(MATH_FUNCS[name]) return MATH_FUNCS[name](...args);
+          throw new Error('unknown function: ' + name);
+        }
+        if(varName && name === varName) return varValue;
+        if(name in MATH_CONSTS) return MATH_CONSTS[name];
+        throw new Error('unknown identifier: ' + name);
+      }
+      throw new Error('unexpected token');
+    }
+    const result = expectExpr();
+    if(pos !== tokens.length) throw new Error('unexpected trailing input');
+    return result;
+  }
+
+  // normalize implicit multiplication (2x -> 2*x, 3(x+1) -> 3*(x+1), )( -> )*( )
+  function insertImplicitMul(src){
+    return src
+      .replace(/(\d)(\()/g, '$1*$2')
+      .replace(/(\))(\d)/g, '$1*$2')
+      .replace(/(\))(\()/g, '$1*$2')
+      .replace(/(\d)([a-zA-Z])/g, '$1*$2')
+      .replace(/\b([a-zA-Z]+)\(/g, (m, word) => MATH_FUNCS[word] ? m : word + '*(');
+  }
+
+  function normalizeMathWords(str){
+    let s = str.toLowerCase();
+    // "X percent of Y" / "X% of Y"  ->  (X/100)*Y  — do this before other word swaps
+    s = s.replace(/(-?\d+\.?\d*)\s*(?:%|percent)\s*of\s*(-?\d+\.?\d*)/g, '(($1)/100*($2))');
+    s = s.replace(/square root of\s*(-?\d+\.?\d*)/g, 'sqrt($1)')
+         .replace(/cube root of\s*(-?\d+\.?\d*)/g, 'cbrt($1)')
+         .replace(/\bequals\b|\bequal to\b|\bis equal to\b/g, '=')
+         .replace(/\bplus\b/g, '+')
+         .replace(/\bminus\b/g, '-')
+         .replace(/\btimes\b|\bmultiplied by\b/g, '*')
+         .replace(/\bdivided by\b|\bover\b/g, '/')
+         .replace(/\bto the power of\b|\bpower\b/g, '^')
+         .replace(/\bsquared\b/g, '^2')
+         .replace(/\bcubed\b/g, '^3')
+         .replace(/×/g, '*').replace(/÷/g, '/')
+         .replace(/(\d)\s+x\s+(\d)/gi, '$1*$2') // "5 x 3" shorthand for 5*3 (spaced, digits both sides)
+         .replace(/[?]/g, '');
+    return s;
+  }
+
+  function evaluateMathExpression(raw){
+    let s = normalizeMathWords(raw);
+    s = s.replace(/^(calculate|compute|what is|what's|evaluate|solve|work out)\s*/i, '');
+    s = insertImplicitMul(s);
+    const tokens = tokenizeMath(s);
+    return parseMath(tokens, null, null);
+  }
+
+  // f(x) = evaluate expr with x substituted — used to solve linear equations
+  // via two sample points without full symbolic algebra.
+  function evalWithX(exprSrc, xVal){
+    const norm = insertImplicitMul(exprSrc);
+    const tokens = tokenizeMath(norm);
+    return parseMath(tokens, 'x', xVal);
+  }
+
+  function solveLinearEquation(normEq){
+    const parts = normEq.split('=');
+    if(parts.length !== 2) return null;
+    const [lhs, rhs] = parts;
+    if(!/x/i.test(normEq)) return null;
+    const g = (xv) => evalWithX(lhs, xv) - evalWithX(rhs, xv);
+    const b = g(0), g1 = g(1);
+    const m = g1 - b;
+    if(Math.abs(m) < 1e-9){
+      return Math.abs(b) < 1e-9 ? { infinite:true } : { noSolution:true };
+    }
+    return { x: -b / m };
+  }
+
+  function solveQuadraticEquation(normEq){
+    const m = normEq.replace(/\s+/g,'').match(
+      /^([+-]?\d*\.?\d*)\*?x\^2(?:([+-]\d*\.?\d*)\*?x)?([+-]\d+\.?\d*)?=0$/i
+    );
+    if(!m) return null;
+    const a = m[1] === '' || m[1] === '+' ? 1 : (m[1] === '-' ? -1 : parseFloat(m[1]));
+    const b = m[2] === undefined ? 0 : (m[2] === '+' || m[2] === '' ? 1 : (m[2] === '-' ? -1 : parseFloat(m[2])));
+    const c = m[3] === undefined ? 0 : parseFloat(m[3]);
+    const disc = b*b - 4*a*c;
+    if(disc < 0) return { complex:true, real: -b/(2*a), imag: Math.sqrt(-disc)/(2*a) };
+    const sq = Math.sqrt(disc);
+    return { x1: (-b+sq)/(2*a), x2: (-b-sq)/(2*a) };
+  }
+
+  function isMathQuery(q){
+    const s = q.toLowerCase().trim();
+    if(/^(calculate|compute|solve|evaluate)\b/.test(s)) return true;
+    if(/square root of|cube root of|factorial|percent|%/.test(s)) return true;
+    if(/\bsquared\b|\bcubed\b/.test(s)) return true;
+    if(/^what('s| is)\s.*[\d]/.test(s) && /[+\-*/^%]|plus|minus|times|divided|squared|cubed/.test(s)) return true;
+    const stripped = s.replace(/[?.]+$/,'');
+    if(/^\d+\.?\d*\s*x\s*\d+\.?\d*$/i.test(stripped)) return true; // "5 x 3" shorthand
+    // bare expression: mostly digits/operators/known function names
+    if(/^[0-9x.\s+\-*/^%()!,]+$/.test(stripped) && /\d/.test(stripped) && /[+\-*/^%!]/.test(stripped)) return true;
+    if(/^[a-z0-9x.\s+\-*/^%()!,]+=[a-z0-9x.\s+\-*/^%()!,]+$/i.test(stripped) && /x/i.test(stripped)) return true;
+    return false;
+  }
+
+  function formatNum(n){
+    if(!isFinite(n)) return String(n);
+    return Math.abs(n - Math.round(n)) < 1e-9 ? String(Math.round(n)) : parseFloat(n.toFixed(6)).toString();
+  }
+
+  function tryMathCommand(raw){
+    const q = raw.trim();
+    if(!isMathQuery(q)) return null;
+
+    const stripped = q.replace(/^(solve( for x)?:?\s*)/i,'');
+    const norm = insertImplicitMul(normalizeMathWords(stripped)).replace(/^(calculate|compute|what is|what's|evaluate|work out)\s*/i,'');
+
+    // equation with an "x" — try quadratic first, then linear
+    if(norm.includes('=') && /x/i.test(norm)){
+      try{
+        const quad = solveQuadraticEquation(norm);
+        if(quad){
+          if(quad.complex){
+            return 'No real solution, {ADDRESS}. The roots are complex: x = ' + formatNum(quad.real) + ' \u00B1 ' + formatNum(quad.imag) + 'i.';
+          }
+          return 'Solved, {ADDRESS}: x = ' + formatNum(quad.x1) + ' or x = ' + formatNum(quad.x2) + '.';
+        }
+      } catch(e){ /* fall through to linear */ }
+      try{
+        const lin = solveLinearEquation(norm);
+        if(lin){
+          if(lin.infinite) return 'That equation is true for every value of x, {ADDRESS} — infinitely many solutions.';
+          if(lin.noSolution) return 'That equation has no solution, {ADDRESS}.';
+          return 'Solved, {ADDRESS}: x = ' + formatNum(lin.x) + '.';
+        }
+      } catch(e){ return null; }
+      return null;
+    }
+
+    // plain expression
+    try{
+      const tokens = tokenizeMath(norm);
+      const result = parseMath(tokens, null, null);
+      if(typeof result === 'number' && isFinite(result)){
+        return 'That comes out to ' + formatNum(result) + ', {ADDRESS}.';
+      }
+    } catch(e){ /* fall through — signal caller to use the Google fallback */ }
+    return null;
+  }
+
+  /* ============ vault command handlers ============ */
+  const REMEMBER_RE = /^(?:please\s+)?(?:remember|note|save)(?:\s+that)?\s+(.+)/i;
+  const NAME_RE = /^(?:my name is|call me)\s+(.+)/i;
+  const RECALL_RE = /^(?:what do you remember about|what did i save about|recall|find in my notes|find in my vault|search my vault|search my notes|do you remember)\s*(.*)/i;
+  const FORGET_RE = /^(?:forget|delete note|remove note|delete from vault)\s+(?:about\s+)?(.+)/i;
+
+  async function tryVaultCommand(raw){
+    let m;
+
+    if((m = raw.match(NAME_RE))){
+      const name = m[1].trim().replace(/[.!]+$/,'');
+      if(name){
+        await saveProfileName(name);
+        return "Understood. I will address you as " + name + " from now on.";
+      }
+    }
+
+    if((m = raw.match(REMEMBER_RE))){
+      const content = m[1].trim();
+      if(content){
+        const ok = await vaultAdd(content);
+        return ok ? "Noted, {ADDRESS}. I've stored that in your personal data vault."
+                   : "I was unable to write to the vault, {ADDRESS}. Storage may be unavailable.";
+      }
+    }
+
+    if((m = raw.match(FORGET_RE))){
+      const topic = m[1].trim();
+      const matches = await vaultSearch(topic);
+      if(!matches.length) return "I found nothing in the vault matching that, {ADDRESS}.";
+      for(const item of matches) await vaultDelete(item.key);
+      return "Removed " + matches.length + " matching entr" + (matches.length===1?'y':'ies') + " from the vault, {ADDRESS}.";
+    }
+
+    if((m = raw.match(RECALL_RE))){
+      const topic = (m[1]||'').trim();
+      const matches = await vaultSearch(topic);
+      if(!matches.length){
+        return topic
+          ? "I have nothing stored about \"" + topic + "\", {ADDRESS}."
+          : "Your vault is currently empty, {ADDRESS}.";
+      }
+      const top = matches.slice(0,2).map(it=>it.content).join('; ');
+      return "From your personal vault, {ADDRESS}: " + top;
+    }
+
+    return null;
+  }
+
+  /* ============ text cleanup ============ */
+  function cleanText(str){
+    if(!str) return '';
+    return str
+      .replace(/\[\d+\]/g,'')
+      .replace(/\(.*?disambiguation.*?\)/gi,'')
+      .replace(/\s+/g,' ')
+      .trim();
+  }
+  function toConcise(str, maxSentences){
+    const sentences = str.match(/[^.!?]+[.!?]+/g) || [str];
+    return sentences.slice(0, maxSentences).join(' ').trim();
+  }
+
+  /* ============ external intelligence aggregator ============ */
+  async function fetchWikipedia(query){
+    const url = 'https://en.wikipedia.org/api/rest_v1/page/summary/' + encodeURIComponent(query.replace(/\s+/g,'_'));
+    const res = await fetch(url);
+    if(!res.ok) throw new Error('wiki-miss');
+    const data = await res.json();
+    if(!data.extract) throw new Error('wiki-empty');
+    return { source: 'Wikipedia', text: cleanText(data.extract), url: data.content_urls && data.content_urls.desktop ? data.content_urls.desktop.page : null };
+  }
+
+  async function fetchDuckDuckGo(query){
+    const target = 'https://api.duckduckgo.com/?q=' + encodeURIComponent(query) + '&format=json&no_html=1&skip_disambig=1';
+    const proxied = 'https://api.allorigins.win/raw?url=' + encodeURIComponent(target);
+    const res = await fetch(proxied);
+    if(!res.ok) throw new Error('ddg-miss');
+    const data = await res.json();
+    const text = data.AbstractText || (data.RelatedTopics && data.RelatedTopics[0] && data.RelatedTopics[0].Text) || '';
+    if(!text) throw new Error('ddg-empty');
+    return { source: 'DuckDuckGo', text: cleanText(text), url: data.AbstractURL || null };
+  }
+
+  async function runIntelligenceQuery(query){
+    uplinkStatusEl.textContent = 'QUERYING';
+    try{
+      const r = await fetchWikipedia(query);
+      uplinkStatusEl.textContent = 'ACTIVE';
+      return r;
+    } catch(e){ /* fall through */ }
+
+    try{
+      const r = await fetchDuckDuckGo(query);
+      uplinkStatusEl.textContent = 'ACTIVE';
+      return r;
+    } catch(e){ /* fall through */ }
+
+    uplinkStatusEl.textContent = 'DEGRADED';
+    return null;
+  }
+
+  /* ============ main input handler ============ */
+  async function handleUserInput(raw){
+    logLine(raw, 'user');
+    transcriptBar.textContent = '';
+
+    const vaultReply = await tryVaultCommand(raw);
+    if(vaultReply){
+      speak(vaultReply);
+      return;
+    }
+
+    const local = tryLocalCommand(raw);
+    if(local){
+      speak(local);
+      return;
+    }
+
+    if(isMathQuery(raw)){
+      const mathReply = tryMathCommand(raw);
+      if(mathReply){
+        speak(mathReply);
+        return;
+      }
+      // couldn't parse it locally (word problem, unsupported notation, etc.) —
+      // stage relevant links on the HUD sidebar instead of blindly opening a tab.
+      setState('processing');
+      logLine('Local math core could not resolve this one — staging lookup links, ' + ADDRESS + '.', 'sys');
+      stageRelevantLinks(raw);
+      speak("That one's outside my local math core, {ADDRESS}. I've staged some relevant links on your HUD for it.");
+      return;
+    }
+
+    if(isWeatherQuery(raw)){
+      stageRelevantLinks('weather ' + raw);
+      speak(tryLocalCommand('weather'));
+      return;
+    }
+
+    setState('processing');
+    logLine('Querying external data sources for: "' + raw + '"', 'sys');
+
+    stageRelevantLinks(raw);
+
+    let result = null;
+    try{
+      result = await runIntelligenceQuery(raw);
+    } catch(e){
+      result = null;
+    }
+
+    if(result && result.text){
+      const concise = toConcise(result.text, 3);
+      const response = 'Sir, according to available web telemetries via ' + result.source + ', ' + concise + ' I have displayed further readings on your HUD.';
+      logLine('[' + result.source + '] ' + concise + (result.url ? '  (' + result.url + ')' : ''), 'sys');
+      speak(response.replace(/^Sir,/, '{ADDRESS},'));
+    } else {
+      logLine('Telemetry offline. No structured data returned for this query.', 'sys');
+      speak("Telemetry offline, {ADDRESS}. I've prepared the most relevant links I could find on your HUD for manual lookup.");
+      document.getElementById('websearch-input').value = raw;
+    }
+  }
+
+  /* ============ boot sequence ============ */
+  setTimeout(async () => {
+    let name = null;
+    try{
+      const r = await window.storage.get('profile:name', false);
+      if(r && r.value) name = r.value;
+    } catch(e){}
+    if(name){
+      logLine('Welcome back, ' + name + '. All subsystems nominal. Voice and text uplinks ready.', 'sys');
+    } else {
+      logLine('All subsystems nominal. Voice and text uplinks ready. Say "my name is..." to personalize.', 'sys');
+    }
+    if(!micHardBlockMessage()){
+      logLine('Note: voice input requires microphone permission in this browser tab. Click ACTIVATE and allow access when prompted.', 'sys');
+    }
+  }, 600);
+
+})();
+</script>
+</body>
+</html>
